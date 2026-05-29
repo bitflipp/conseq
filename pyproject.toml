@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-cov"]
