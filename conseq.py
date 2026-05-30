@@ -215,6 +215,8 @@ class VoiceIndex:
         Maps id(elem) -> voice key for O(1) lookup.
     note_start : dict[int, Fraction]
         Maps id(elem) -> start time, used for the simultaneity overlap check.
+    note_end : dict[int, Fraction]
+        Maps id(elem) -> end time, used for the simultaneity overlap check.
     _by_end_per_voice : dict[tuple, list[(end, start, midi, elem)]]
         Per-voice list sorted by end time, for last_sounding_at_or_before.
     _attacks_per_voice : dict[tuple, list[Fraction]]
@@ -461,6 +463,11 @@ def _check_rest_lookthrough_intra(pair, t2, semitones, vk, idx, uf):
 
     # Same voice → the previous chord and new chord are in the same stream,
     # so simultaneity is guaranteed; no overlap check needed.
+    #
+    # No same-voice octave-doubling guard is needed here (unlike _interval_pairs):
+    # this path is only reached when the new pair shares a voice key, and
+    # _interval_pairs filters same-voice octave pairs out of `starting`, so the
+    # intra path runs for fifths only.
     for i in range(len(members)):
         for j in range(i + 1, len(members)):
             midi_i, elem_i = members[i]
@@ -516,8 +523,8 @@ def find_note_colors(notes, intervals=('fifths',)):
     result            = {}
     for nid, root_id in uf.components().items():
         if root_id not in component_color:
-            idx_c = len(component_color)
-            if idx_c >= len(PALETTE) and not palette_exhausted:
+            color_idx = len(component_color)
+            if color_idx >= len(PALETTE) and not palette_exhausted:
                 warnings.warn(
                     f'More than {len(PALETTE)} independent violation groups found; '
                     f'palette colors will repeat and groups may be visually '
@@ -525,7 +532,7 @@ def find_note_colors(notes, intervals=('fifths',)):
                     stacklevel=2,
                 )
                 palette_exhausted = True
-            component_color[root_id] = PALETTE[idx_c % len(PALETTE)]
+            component_color[root_id] = PALETTE[color_idx % len(PALETTE)]
         result[nid] = component_color[root_id]
 
     return result, len(component_color)
