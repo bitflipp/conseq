@@ -25,7 +25,7 @@ python -m venv /tmp/conseq-venv && /tmp/conseq-venv/bin/pip install pytest pytes
 
 `pyproject.toml` sets `pythonpath = ["."]` so `import conseq` works from the repo root.
 
-174 tests, 99% coverage as of the last commit.
+175 tests, 99% coverage as of the last commit.
 
 ## Key constraints
 
@@ -34,7 +34,7 @@ python -m venv /tmp/conseq-venv && /tmp/conseq-venv/bin/pip install pytest pytes
 - Tie-stop notes are not attacks; tie-start notes are not releases.
 - Grace notes are excluded entirely from interval detection.
 - Same-voice octave doublings (semitones == 0, same vk) are not violations.
-- `find_note_colors` returns `(color_dict, n_groups)` — `n_groups` counts independent violation groups before palette modulo.
+- `find_note_colors` returns `(color_dict, n_groups)` — `n_groups` counts independent violation groups before palette modulo. It's a tested helper / parallel API; `main` itself runs detection through `find_violation_groups`.
 - `find_violation_groups` returns `list[ViolationGroup]` in score order (earliest onset first); colors match `find_note_colors` exactly (shared `_build_violation_uf` + `_assign_colors`), but group *numbers* run in score order. Used by `--annotate` and as `main`'s single detection pass.
 - `PALETTE` has 8 colors; a warning is emitted if there are more than 8 independent groups.
 

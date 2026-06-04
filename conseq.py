@@ -667,9 +667,10 @@ def make_navigation_marker(number, color):
 
     A rehearsal mark (rather than plain <words>) so the marker also appears in
     MuseScore's Timeline panel as a clickable jump target — the point of the
-    feature for large scores.  Prominence is left to the renderer's
-    rehearsal-mark style (typically bold + boxed); only color is set here, to
-    tie the marker to its highlighted notes.
+    feature for large scores.  Placed above the staff; prominence is otherwise
+    left to the renderer's rehearsal-mark style (typically bold + boxed).  Only
+    color is set on the rehearsal text, to tie the marker to its highlighted
+    notes.
     """
     direction = ET.Element('direction', {'placement': 'above'})
     dtype     = ET.SubElement(direction, 'direction-type')
