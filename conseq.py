@@ -187,6 +187,24 @@ def collect_notes(root):
     return notes
 
 
+def build_note_locations(root):
+    """Map id(<note>) -> (measure_elem, measure_number) for every note element.
+
+    ElementTree has no parent pointers, so navigation markers (inserted as
+    <measure> children next to their anchor note) need this structural lookup.
+    It depends only on a note's containing measure, not on duration/voice logic,
+    so it deliberately does not duplicate collect_notes.
+    """
+    locations = {}
+    for part in root.iter('part'):
+        for measure in part.findall('measure'):
+            number = measure.get('number')
+            for child in measure:
+                if child.tag == 'note':
+                    locations[id(child)] = (measure, number)
+    return locations
+
+
 # ---------------------------------------------------------------------------
 # Tie helpers
 # ---------------------------------------------------------------------------
@@ -477,13 +495,12 @@ def _check_rest_lookthrough_intra(pair, t2, semitones, vk, idx, uf):
             uf.flag([elem_i, elem_j, pair.note_a, pair.note_b])
 
 
-def find_note_colors(notes, intervals=('fifths',)):
-    """Return ({id(note_elem): color_hex}, n_groups) for every note involved in a consecutive violation.
+def _build_violation_uf(notes, intervals):
+    """Run consecutive-interval detection; return (VoiceIndex, _UnionFind).
 
-    Note on identity: id(elem) is used as a note identity token throughout.
-    This is safe because all note elements remain alive for the full duration
-    of this function (they are referenced in `notes`), so no two live elements
-    can share an id.
+    Shared detection core: find_note_colors and find_violation_groups both need
+    the same union-find of violating note elements and differ only in how they
+    package the result (per-note colors vs. grouped navigation markers).
     """
     idx = VoiceIndex(notes)
     uf  = _UnionFind()
@@ -517,7 +534,16 @@ def find_note_colors(notes, intervals=('fifths',)):
                 else:
                     _check_rest_lookthrough_intra(pair, t2, semitones, vk_a, idx, uf)
 
-    # Assign one palette color per connected component.
+    return idx, uf
+
+
+def _assign_colors(uf):
+    """Assign one palette color per union-find component.
+
+    Returns ({id(elem): color_hex}, {root_id: color_hex}).  Components are
+    colored in union-find registration order, so the assignment is deterministic
+    and identical whether reached via find_note_colors or find_violation_groups.
+    """
     component_color   = {}
     palette_exhausted = False
     result            = {}
@@ -534,8 +560,67 @@ def find_note_colors(notes, intervals=('fifths',)):
                 palette_exhausted = True
             component_color[root_id] = PALETTE[color_idx % len(PALETTE)]
         result[nid] = component_color[root_id]
+    return result, component_color
 
+
+def find_note_colors(notes, intervals=('fifths',)):
+    """Return ({id(note_elem): color_hex}, n_groups) for every note involved in a consecutive violation.
+
+    Note on identity: id(elem) is used as a note identity token throughout.
+    This is safe because all note elements remain alive for the full duration
+    of this function (they are referenced in `notes`), so no two live elements
+    can share an id.
+    """
+    _idx, uf = _build_violation_uf(notes, intervals)
+    result, component_color = _assign_colors(uf)
     return result, len(component_color)
+
+
+class ViolationGroup(NamedTuple):
+    """One independent consecutive-interval violation, ready for annotation."""
+    number:  int     # 1-based index in score order (earliest onset first)
+    color:   str     # palette hex shared by every member note
+    anchor:  object  # the earliest-onset member element — where its marker goes
+    members: tuple   # all member ET.Elements
+
+
+def find_violation_groups(notes, intervals=('fifths',)):
+    """Return a list of ViolationGroup, ordered by score position.
+
+    Colors match find_note_colors exactly (same union-find, same registration-
+    order assignment), so a marker tinted with a group's color points at the
+    notes carrying that same color.  Group *numbers*, by contrast, run in score
+    order (earliest onset first) so markers read left-to-right through the score.
+    """
+    idx, uf = _build_violation_uf(notes, intervals)
+    _result, component_color = _assign_colors(uf)
+
+    nid_to_elem = {id(note.elem): note.elem for note in notes}
+
+    def member_key(nid):
+        # Onset order; voice key breaks onset ties deterministically.
+        return (idx.note_start[nid], idx.note_to_vk[nid])
+
+    members_by_root = defaultdict(list)
+    for nid, root_id in uf.components().items():
+        members_by_root[root_id].append(nid)
+
+    ordered_roots = sorted(
+        members_by_root,
+        key=lambda root: member_key(min(members_by_root[root], key=member_key)),
+    )
+
+    groups = []
+    for number, root_id in enumerate(ordered_roots, start=1):
+        nids   = members_by_root[root_id]
+        anchor = nid_to_elem[min(nids, key=member_key)]
+        groups.append(ViolationGroup(
+            number=number,
+            color=component_color[root_id],
+            anchor=anchor,
+            members=tuple(nid_to_elem[nid] for nid in nids),
+        ))
+    return groups
 
 
 # ---------------------------------------------------------------------------
@@ -567,6 +652,51 @@ def colorize(note_elem, color):
 
 
 # ---------------------------------------------------------------------------
+# Navigation markers
+# ---------------------------------------------------------------------------
+
+# Double vertical line (U+2016) — a compact, musically neutral glyph that won't
+# be mistaken for a note or dynamic, and visually distinguishes our marks from
+# the composer's rehearsal letters.  The trailing number is the group's
+# score-order index; the marker's color ties it to its highlighted notes.
+_MARKER_GLYPH = '‖'
+
+
+def make_navigation_marker(number, color):
+    """Build a colored <rehearsal> direction marker for a violation group.
+
+    A rehearsal mark (rather than plain <words>) so the marker also appears in
+    MuseScore's Timeline panel as a clickable jump target — the point of the
+    feature for large scores.  Prominence is left to the renderer's
+    rehearsal-mark style (typically bold + boxed); only color is set here, to
+    tie the marker to its highlighted notes.
+    """
+    direction = ET.Element('direction', {'placement': 'above'})
+    dtype     = ET.SubElement(direction, 'direction-type')
+    rehearsal = ET.SubElement(dtype, 'rehearsal')
+    rehearsal.set('color', color)
+    rehearsal.text = f'{_MARKER_GLYPH}{number}'
+    return direction
+
+
+def annotate_groups(groups, locations):
+    """Insert one navigation marker per group, at its anchor note's beat.
+
+    A <direction> takes effect at the cursor position where it appears in the
+    measure, so the marker is inserted immediately before its anchor <note> to
+    render at that note's beat.  Anchors without a recorded location (which
+    should not occur for collected notes) are skipped defensively.
+    """
+    for group in groups:
+        location = locations.get(id(group.anchor))
+        if location is None:
+            continue
+        measure, _number = location
+        insert_at = list(measure).index(group.anchor)
+        measure.insert(insert_at, make_navigation_marker(group.number, group.color))
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -590,6 +720,12 @@ def main():
         default='fifths',
         help='Which consecutive intervals to detect (default: fifths)',
     )
+    parser.add_argument(
+        '--annotate',
+        action='store_true',
+        help='Insert a numbered, color-matched on-page marker above the first '
+             'note of each violation group, to locate highlights in large scores.',
+    )
     args = parser.parse_args()
 
     intervals = ['fifths', 'octaves'] if args.interval == 'both' else [args.interval]
@@ -609,13 +745,20 @@ def main():
     # as a file path.  ET.parse(path) would re-read the file, which fails for '-'.
     root = ET.fromstring(raw)
 
-    notes       = collect_notes(root)
-    note_colors, n_groups = find_note_colors(notes, intervals=intervals)
+    notes  = collect_notes(root)
+    groups = find_violation_groups(notes, intervals=intervals)
+
+    # One color per group, flattened to per-note for colorization.
+    note_colors = {id(elem): group.color
+                   for group in groups for elem in group.members}
 
     for note in notes:
         color = note_colors.get(id(note.elem))
         if color:
             colorize(note.elem, color)
+
+    if args.annotate:
+        annotate_groups(groups, build_note_locations(root))
 
     body = ET.tostring(root, encoding='unicode', xml_declaration=False)
     if args.output == '-':
@@ -629,9 +772,11 @@ def main():
     # Progress message goes to stderr so it doesn't pollute stdout when the
     # output XML is piped to another tool via `-`.
     n_notes  = len(note_colors)
+    n_groups = len(groups)
     label    = {'fifths': 'fifth', 'octaves': 'octave', 'both': 'fifth/octave'}[args.interval]
+    suffix   = ' and marked' if args.annotate else ''
     print(
-        f'{n_notes} note(s) in {n_groups} consecutive-{label} group(s) colorized.',
+        f'{n_notes} note(s) in {n_groups} consecutive-{label} group(s) colorized{suffix}.',
         file=sys.stderr,
     )
 

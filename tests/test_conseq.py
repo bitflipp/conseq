@@ -18,10 +18,14 @@ from conseq import (
     _interval_pairs,
     _is_tie_start,
     _is_tie_stop,
+    annotate_groups,
+    build_note_locations,
     collect_notes,
     colorize,
     find_note_colors,
+    find_violation_groups,
     forms_interval,
+    make_navigation_marker,
     pitch_to_midi,
 )
 
@@ -1697,3 +1701,152 @@ class TestMain:
         with pytest.raises(SystemExit) as exc:
             conseq.main()
         assert exc.value.code != 0
+
+
+# ---------------------------------------------------------------------------
+# TestNavigationAnnotations
+# ---------------------------------------------------------------------------
+
+def _staggered_fifth(i):
+    """4 NoteInfo forming a direct-boundary fifth at time [2i, 2i+2), part P{i}."""
+    vk1 = (f'P{i}', '1', '1')
+    vk2 = (f'P{i}', '1', '2')
+    e1, e2 = make_note('C', 4), make_note('D', 4)
+    e3, e4 = make_note('G', 4), make_note('A', 4)
+    s = Fraction(2 * i)
+    return [
+        NoteInfo(s,     s + 1, 60, e1, vk1),
+        NoteInfo(s,     s + 1, 67, e3, vk2),
+        NoteInfo(s + 1, s + 2, 62, e2, vk1),
+        NoteInfo(s + 1, s + 2, 69, e4, vk2),
+    ]
+
+
+class TestBuildNoteLocations:
+    def test_maps_each_note_to_its_measure(self):
+        root  = parallel_fifths_score()
+        notes = collect_notes(root)
+        locs  = build_note_locations(root)
+        for n in notes:
+            measure, number = locs[id(n.elem)]
+            assert number == '1'
+            assert n.elem in list(measure)
+
+    def test_distinct_measures_reported(self):
+        m1 = make_measure('1', notes=[make_note('C', 4)])
+        m2 = make_measure('2', notes=[make_note('D', 4)])
+        root = make_score([('P1', [m1, m2])])
+        locs = build_note_locations(root)
+        numbers = {num for _measure, num in locs.values()}
+        assert numbers == {'1', '2'}
+
+
+class TestFindViolationGroups:
+    def test_single_group_basics(self):
+        root   = parallel_fifths_score()
+        notes  = collect_notes(root)
+        groups = find_violation_groups(notes)
+        assert len(groups) == 1
+        g = groups[0]
+        assert g.number == 1
+        assert g.color == conseq.PALETTE[0]
+        assert len(g.members) == 4
+
+    def test_anchor_is_earliest_onset_note(self):
+        root   = parallel_fifths_score()
+        notes  = collect_notes(root)
+        starts = {id(n.elem): n.start for n in notes}
+        g      = find_violation_groups(notes)[0]
+        assert starts[id(g.anchor)] == min(starts[id(m)] for m in g.members)
+
+    def test_numbering_follows_score_order(self):
+        notes  = _staggered_fifth(0) + _staggered_fifth(1)
+        groups = find_violation_groups(notes)
+        assert [g.number for g in groups] == [1, 2]
+        starts = {id(n.elem): n.start for n in notes}
+        anchor_starts = [starts[id(g.anchor)] for g in groups]
+        assert anchor_starts == sorted(anchor_starts)
+
+    def test_colors_match_find_note_colors(self):
+        notes        = _staggered_fifth(0) + _staggered_fifth(1)
+        color_map, _ = find_note_colors(notes)
+        for g in find_violation_groups(notes):
+            for member in g.members:
+                assert color_map[id(member)] == g.color
+
+    def test_no_violations_returns_empty(self):
+        root  = parallel_fifths_score()
+        notes = collect_notes(root)
+        assert find_violation_groups(notes, intervals=('octaves',)) == []
+
+
+class TestMakeNavigationMarker:
+    def test_structure_and_content(self):
+        d = make_navigation_marker(3, '#D62728')
+        assert d.tag == 'direction'
+        assert d.get('placement') == 'above'
+        rehearsal = d.find('direction-type/rehearsal')
+        assert rehearsal is not None
+        assert rehearsal.get('color') == '#D62728'
+        assert rehearsal.text == '‖3'
+
+    def test_color_only_no_forced_font(self):
+        # Prominence is left to the renderer's rehearsal-mark style.
+        rehearsal = make_navigation_marker(1, '#000000').find('direction-type/rehearsal')
+        assert rehearsal.get('font-size') is None
+        assert rehearsal.get('font-weight') is None
+
+
+class TestAnnotateGroups:
+    def test_one_marker_inserted_before_anchor(self):
+        root   = parallel_fifths_score()
+        notes  = collect_notes(root)
+        groups = find_violation_groups(notes)
+        annotate_groups(groups, build_note_locations(root))
+
+        directions = list(root.iter('direction'))
+        assert len(directions) == 1
+        measure = root.find('part/measure')
+        kids    = list(measure)
+        assert kids.index(directions[0]) == kids.index(groups[0].anchor) - 1
+
+    def test_marker_color_matches_group(self):
+        root   = parallel_fifths_score()
+        notes  = collect_notes(root)
+        groups = find_violation_groups(notes)
+        annotate_groups(groups, build_note_locations(root))
+        rehearsal = root.find('part/measure/direction/direction-type/rehearsal')
+        assert rehearsal.get('color') == groups[0].color
+
+    def test_missing_location_skipped(self):
+        root   = parallel_fifths_score()
+        notes  = collect_notes(root)
+        groups = find_violation_groups(notes)
+        annotate_groups(groups, {})   # no locations → nothing inserted
+        assert list(root.iter('direction')) == []
+
+
+class TestCliAnnotate:
+    def _markers(self, out):
+        body = '\n'.join(out.split('\n')[1:]) if out.startswith('<?xml') else out
+        root = ET.fromstring(body)
+        return [r for r in root.iter('rehearsal')
+                if r.text and r.text.startswith('‖')], root
+
+    def test_annotate_inserts_marker(self, monkeypatch, capsys):
+        out, err = _run_main(monkeypatch, capsys, ['--annotate', '-', '-'], _fifths_xml())
+        marks, _ = self._markers(out)
+        assert len(marks) == 1
+        assert 'and marked' in err
+
+    def test_marker_color_matches_colored_note(self, monkeypatch, capsys):
+        out, _ = _run_main(monkeypatch, capsys, ['--annotate', '-', '-'], _fifths_xml())
+        marks, root = self._markers(out)
+        note_colors = {n.get('color') for n in root.iter('note') if n.get('color')}
+        assert marks[0].get('color') in note_colors
+
+    def test_no_marker_without_flag(self, monkeypatch, capsys):
+        out, err = _run_main(monkeypatch, capsys, ['-', '-'], _fifths_xml())
+        marks, _ = self._markers(out)
+        assert marks == []
+        assert 'and marked' not in err
