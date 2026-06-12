@@ -1728,16 +1728,14 @@ class TestBuildNoteLocations:
         notes = collect_notes(root)
         locs  = build_note_locations(root)
         for n in notes:
-            measure, number = locs[id(n.elem)]
-            assert number == '1'
-            assert n.elem in list(measure)
+            assert n.elem in list(locs[id(n.elem)])
 
     def test_distinct_measures_reported(self):
         m1 = make_measure('1', notes=[make_note('C', 4)])
         m2 = make_measure('2', notes=[make_note('D', 4)])
         root = make_score([('P1', [m1, m2])])
         locs = build_note_locations(root)
-        numbers = {num for _measure, num in locs.values()}
+        numbers = {measure.get('number') for measure in locs.values()}
         assert numbers == {'1', '2'}
 
 

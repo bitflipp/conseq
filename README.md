@@ -12,6 +12,7 @@ Consecutive perfect intervals are a classic voice-leading prohibition in counter
 - **Independent violation groups** get distinct colors (up to 8; uses a matplotlib tab10 palette)
 - Violations that share a note element are merged into one color group via union-find
 - Excludes grace notes (ornamental) and same-voice octave doublings (piano reinforcement)
+- Optional **navigation markers** (`--annotate`): one numbered, color-matched rehearsal mark per violation group
 - Preserves the original XML prologue verbatim (declaration, DOCTYPE)
 - Reads/writes **stdin and stdout** with `-`
 - **No runtime dependencies** — stdlib only
@@ -19,7 +20,7 @@ Consecutive perfect intervals are a classic voice-leading prohibition in counter
 ## Usage
 
 ```
-python conseq.py [--interval {fifths,octaves,both}] input.xml output.xml
+python conseq.py [--interval {fifths,octaves,both}] [--annotate] input.xml output.xml
 ```
 
 | Argument | Description |
@@ -27,6 +28,7 @@ python conseq.py [--interval {fifths,octaves,both}] input.xml output.xml
 | `input.xml` | Input MusicXML file. Use `-` to read from stdin. |
 | `output.xml` | Output MusicXML file. Use `-` to write to stdout. |
 | `--interval` | Which interval type to detect: `fifths` (default), `octaves`, or `both`. |
+| `--annotate` | Insert a numbered, color-matched rehearsal mark (`‖1`, `‖2`, …) above the first note of each violation group, to locate highlights in large scores. In MuseScore these appear in the Timeline panel as clickable jump targets. |
 
 After processing, a summary line is printed to stderr:
 
@@ -72,7 +74,7 @@ Open the output in any MusicXML-aware renderer (MuseScore, Sibelius, Dorico, Fin
 
 ## Requirements
 
-- Python 3.9+ (uses `NamedTuple`, `Fraction`, walrus operator)
+- Python 3.8+ (uses the walrus operator)
 - No third-party packages
 
 ## Running the tests
@@ -82,7 +84,7 @@ pip install pytest pytest-cov
 pytest tests/ -v --cov=conseq --cov-report=term-missing
 ```
 
-160 tests, 99% coverage.
+175 tests, 99% coverage.
 
 ## License
 

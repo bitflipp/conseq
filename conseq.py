@@ -16,7 +16,7 @@ Octave doublings within a single voice stream (piano reinforcement) are excluded
 Grace notes are excluded; ornamental notes are treated as outside the structural
 voice leading.
 
-Usage: python conseq.py [--interval {fifths,octaves,both}] <input.xml> <output.xml>
+Usage: python conseq.py [--interval {fifths,octaves,both}] [--annotate] <input.xml> <output.xml>
 Use '-' as either filename to read from stdin or write to stdout.
 """
 
@@ -188,7 +188,7 @@ def collect_notes(root):
 
 
 def build_note_locations(root):
-    """Map id(<note>) -> (measure_elem, measure_number) for every note element.
+    """Map id(<note>) -> containing measure element for every note element.
 
     ElementTree has no parent pointers, so navigation markers (inserted as
     <measure> children next to their anchor note) need this structural lookup.
@@ -198,10 +198,9 @@ def build_note_locations(root):
     locations = {}
     for part in root.iter('part'):
         for measure in part.findall('measure'):
-            number = measure.get('number')
             for child in measure:
                 if child.tag == 'note':
-                    locations[id(child)] = (measure, number)
+                    locations[id(child)] = measure
     return locations
 
 
@@ -469,7 +468,7 @@ def _check_rest_lookthrough_intra(pair, t2, semitones, vk, idx, uf):
     if prev is None:
         return
 
-    prev_start, prev_end, members = prev
+    _, prev_end, members = prev
 
     # The direct-boundary case is already handled; skip if no actual gap.
     if prev_end == t2:
@@ -689,10 +688,9 @@ def annotate_groups(groups, locations):
     should not occur for collected notes) are skipped defensively.
     """
     for group in groups:
-        location = locations.get(id(group.anchor))
-        if location is None:
+        measure = locations.get(id(group.anchor))
+        if measure is None:
             continue
-        measure, _number = location
         insert_at = list(measure).index(group.anchor)
         measure.insert(insert_at, make_navigation_marker(group.number, group.color))
 
