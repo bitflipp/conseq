@@ -35,8 +35,10 @@ python conseq.py [--interval {fifths,octaves,both}] [--annotate] input.xml outpu
 After processing, a summary line is printed to stderr:
 
 ```
-4 note(s) in 2 consecutive-fifth group(s) detected and colorized.
+4 note(s) in 2 consecutive-fifth group(s) colorized.
 ```
+
+With `--annotate` it ends `colorized and marked.` instead.
 
 ## Examples
 
@@ -86,7 +88,7 @@ pip install pytest pytest-cov
 pytest tests/ -v --cov=conseq --cov-report=term-missing
 ```
 
-175 tests, 99% coverage.
+177 tests, 99% coverage.
 
 ## License
 

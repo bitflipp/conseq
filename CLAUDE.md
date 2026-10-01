@@ -25,10 +25,11 @@ python -m venv /tmp/conseq-venv && /tmp/conseq-venv/bin/pip install pytest pytes
 
 `pyproject.toml` sets `pythonpath = ["."]` so `import conseq` works from the repo root.
 
-175 tests, 99% coverage as of the last commit.
+177 tests, 99% coverage as of the last commit.
 
 ## Key constraints
 
+- Only `score-partwise` input is supported; `score-timewise` exits with an error.
 - **Stdlib only.** All XML is handled with `xml.etree.ElementTree`. Do not add runtime dependencies.
 - Voice key `(part_id, staff_id, voice_id)` — three components, not two. `staff_id` keeps grand-staff staves separate while still detecting cross-staff intervals.
 - Tie-stop notes are not attacks; tie-start notes are not releases.

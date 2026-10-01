@@ -1627,6 +1627,18 @@ class TestMain:
         assert '<score-partwise' in out
         assert 'colorized' in err
 
+    def test_timewise_rejected(self, monkeypatch, capsys):
+        xml = '<?xml version="1.0"?>\n<score-timewise><measure number="1"/></score-timewise>'
+        with pytest.raises(SystemExit) as exc:
+            _run_main(monkeypatch, capsys, ['-', '-'], xml)
+        assert 'timewise' in str(exc.value)
+
+    def test_malformed_pitch_skipped(self):
+        note = ET.fromstring('<note><pitch><step>C</step></pitch></note>')
+        assert conseq.pitch_to_midi(note) is None
+        note = ET.fromstring('<note><pitch><step>H</step><octave>4</octave></pitch></note>')
+        assert conseq.pitch_to_midi(note) is None
+
     def test_file_input_output(self, tmp_path, monkeypatch, capsys):
         infile = tmp_path / 'in.xml'
         outfile = tmp_path / 'out.xml'

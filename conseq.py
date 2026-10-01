@@ -68,14 +68,14 @@ class NoteInfo(NamedTuple):
     start: Fraction   # onset time in quarter-note units
     end:   Fraction   # release time (exclusive)
     midi:  int        # MIDI pitch number
-    elem:  object     # the raw ET.Element, used as an identity token
+    elem:  ET.Element # the raw ET.Element, used as an identity token
     vk:    tuple      # voice key = (part_id, staff_id, voice_id)
 
 
 class IntervalPair(NamedTuple):
     """Two notes that form a perfect interval at some time point."""
-    note_a: object    # ET.Element
-    note_b: object    # ET.Element
+    note_a: ET.Element
+    note_b: ET.Element
     voices: frozenset # frozenset of the two voice keys (vk_a, vk_b)
 
 
@@ -92,8 +92,12 @@ def pitch_to_midi(note_elem):
     pitch = note_elem.find('pitch')
     if pitch is None:
         return None
-    step   = pitch.find('step').text
-    octave = int(pitch.find('octave').text)
+    step_elem   = pitch.find('step')
+    octave_elem = pitch.find('octave')
+    if step_elem is None or octave_elem is None or step_elem.text not in STEP_SEMITONE:
+        return None   # malformed pitch: skip rather than crash
+    step   = step_elem.text
+    octave = int(octave_elem.text)
     alter_elem = pitch.find('alter')
     alter  = round(float(alter_elem.text)) if alter_elem is not None else 0
     return (octave + 1) * 12 + STEP_SEMITONE[step] + alter
@@ -298,7 +302,7 @@ class VoiceIndex:
             return None
         idx = bisect_left(nl, (t, _BISECT_SENTINEL)) - 1
         while idx >= 0:
-            e, s, m, elem = nl[idx]
+            e, _s, m, elem = nl[idx]
             if not _is_tie_start(elem):
                 return (e, m, elem)
             idx -= 1
@@ -309,9 +313,7 @@ class VoiceIndex:
         chord in voice `vk` ending at or before `t`, or None.
 
         The chord list is sorted by end time (primary key), so we bisect to
-        find the boundary directly.  `_BISECT_SENTINEL` is any value that
-        sorts strictly after every realistic start time, so `(t, sentinel)`
-        sorts after every chord with end == t.
+        find the boundary directly (see `_BISECT_SENTINEL`).
         """
         cl = self._chords_per_voice.get(vk)
         if not cl:
@@ -579,7 +581,7 @@ class ViolationGroup(NamedTuple):
     """One independent consecutive-interval violation, ready for annotation."""
     number:  int     # 1-based index in score order (earliest onset first)
     color:   str     # palette hex shared by every member note
-    anchor:  object  # the earliest-onset member element — where its marker goes
+    anchor:  ET.Element  # the earliest-onset member element — where its marker goes
     members: tuple   # all member ET.Elements
 
 
@@ -743,6 +745,10 @@ def main():
     # Parse from the in-memory string so stdin reads once and works the same
     # as a file path.  ET.parse(path) would re-read the file, which fails for '-'.
     root = ET.fromstring(raw)
+    if root.tag == 'score-timewise':
+        # Traversal assumes <part><measure>; timewise nests them the other way.
+        sys.exit("conseq: score-timewise MusicXML is not supported "
+                 "(convert to partwise first).")
 
     notes  = collect_notes(root)
     groups = find_violation_groups(notes, intervals=intervals)
