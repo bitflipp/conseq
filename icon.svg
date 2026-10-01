@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="conseq: parallel fifths highlighted on a staff">
+  <rect width="128" height="128" rx="24" fill="#1f2430"/>
+  <!-- staff -->
+  <g stroke="#8b93a7" stroke-width="2" stroke-linecap="round">
+    <line x1="14" y1="36" x2="114" y2="36"/>
+    <line x1="14" y1="50" x2="114" y2="50"/>
+    <line x1="14" y1="64" x2="114" y2="64"/>
+    <line x1="14" y1="78" x2="114" y2="78"/>
+    <line x1="14" y1="92" x2="114" y2="92"/>
+  </g>
+  <!-- parallel motion guides -->
+  <g stroke-width="3" stroke-linecap="round" stroke-dasharray="1 7" opacity="0.9">
+    <line x1="42" y1="92" x2="86" y2="78" stroke="#ff5d5d"/>
+    <line x1="42" y1="64" x2="86" y2="50" stroke="#ff5d5d"/>
+  </g>
+  <!-- first fifth -->
+  <ellipse cx="36" cy="92" rx="9.5" ry="7" fill="#ff5d5d" transform="rotate(-20 36 92)"/>
+  <ellipse cx="36" cy="64" rx="9.5" ry="7" fill="#ff5d5d" transform="rotate(-20 36 64)"/>
+  <!-- second fifth -->
+  <ellipse cx="92" cy="78" rx="9.5" ry="7" fill="#ff5d5d" transform="rotate(-20 92 78)"/>
+  <ellipse cx="92" cy="50" rx="9.5" ry="7" fill="#ff5d5d" transform="rotate(-20 92 50)"/>
+  <!-- stems -->
+  <g stroke="#ff5d5d" stroke-width="3" stroke-linecap="round">
+    <line x1="44.5" y1="90" x2="44.5" y2="30"/>
+    <line x1="100.5" y1="76" x2="100.5" y2="22"/>
+  </g>
+</svg>

@@ -1,3 +1,5 @@
+<p align="center"><img src="icon.svg" alt="conseq icon" width="128" height="128"></p>
+
 # conseq
 
 Detect consecutive perfect intervals (parallel fifths, parallel octaves) in MusicXML scores and colorize the offending notes.
